@@ -2,24 +2,56 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-use App\http\Controllers\ProductoController;
-/*
-|--------------------------------------------------------------------------
-| API Routes
-|--------------------------------------------------------------------------
-|
-| Here is where you can register API routes for your application. These
-| routes are loaded by the RouteServiceProvider and all of them will
-| be assigned to the "api" middleware group. Make something great!
-|
-*/
 
-Route::get('/productos', [ProductoController::class, 'listar']);
+use App\Http\Controllers\RoleController;
+use App\Http\Controllers\PersonaController;
+use App\Http\Controllers\UsuarioController;
+use App\Http\Controllers\CategoriaController;
+use App\Http\Controllers\MarcaController;
+use App\Http\Controllers\ProductoController;
+use App\Http\Controllers\TallaController;
+use App\Http\Controllers\ColorController;
+use App\Http\Controllers\StockController;
+use App\Http\Controllers\ClienteController;
+use App\Http\Controllers\ProveedorController;
+use App\Http\Controllers\CompraController;
+use App\Http\Controllers\CompraDetalleController;
+use App\Http\Controllers\VentaController;
+use App\Http\Controllers\VentaDetalleController;
+use App\Http\Controllers\CarritoController;
+use App\Http\Controllers\CarritoDetalleController;
+use App\Http\Controllers\ComprobanteController;
+use App\Http\Controllers\ReporteController;
+use App\Http\Controllers\AuditoriaController;
 
-Route::post('/productos', [ProductoController::class, 'store']);
-
-Route::get('/productos/{id}', [ProductoController::class, 'show']);
-
-Route::put('/productos/{id}', [ProductoController::class, 'update']);
-
-Route::delete('/productos/{id}', [ProductoController::class, 'eliminar']);
+Route::apiResource('auditorias', AuditoriaController::class);
+Route::get('auditorias-usuario/{usuarios_id}', [AuditoriaController::class, 'porUsuario']);
+Route::get('auditorias-tabla/{tabla}', [AuditoriaController::class, 'porTabla']);
+Route::apiResource('reportes', ReporteController::class);
+Route::get('reportes-ventas', [ReporteController::class, 'ventas']);
+Route::get('reportes-compras', [ReporteController::class, 'compras']);
+Route::get('reportes-inventario', [ReporteController::class, 'inventario']);
+Route::get('reportes-stock-bajo', [ReporteController::class, 'stockBajo']);
+Route::get('dashboard', [ReporteController::class, 'dashboard']);
+Route::apiResource('comprobantes', ComprobanteController::class);
+Route::get('comprobantes/buscar/{numero}', [ComprobanteController::class, 'buscarPorNumero']);
+Route::apiResource('carrito-detalles', CarritoDetalleController::class);
+Route::apiResource('carritos', CarritoController::class);
+Route::get('usuarios/{usuarios_id}/carrito-activo', [CarritoController::class, 'carritoActivo']);
+Route::delete('carritos/{id}/vaciar', [CarritoController::class, 'vaciar']);
+Route::apiResource('venta-detalles', VentaDetalleController::class);
+Route::apiResource('ventas', VentaController::class);
+Route::apiResource('compra-detalles', CompraDetalleController::class);
+Route::apiResource('compras', CompraController::class);
+Route::apiResource('proveedores', ProveedorController::class);
+Route::apiResource('clientes', ClienteController::class);
+Route::apiResource('stocks', StockController::class);
+Route::get('stocks-bajo', [StockController::class, 'stockBajo']);
+Route::apiResource('colores', ColorController::class);
+Route::apiResource('tallas', TallaController::class);
+Route::apiResource('productos', ProductoController::class);
+Route::apiResource('marcas', MarcaController::class);
+Route::apiResource('categorias', CategoriaController::class);
+Route::apiResource('usuarios', UsuarioController::class);
+Route::apiResource('personas', PersonaController::class);
+Route::apiResource('roles', RoleController::class);
