@@ -14,7 +14,7 @@ class ColorController extends Controller
     public function index()
     {
         $colores = Color::withCount('stocks')
-            ->orderBy('id', 'desc')
+            ->orderBy('id', 'asc')
             ->get();
 
         return response()->json([

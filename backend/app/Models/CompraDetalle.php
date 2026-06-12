@@ -11,6 +11,7 @@ class CompraDetalle extends Model
     protected $fillable = [
         'compras_id',
         'productos_id',
+        'stocks_id',
         'cantidad',
         'precio',
         'subtotal',
@@ -24,5 +25,10 @@ class CompraDetalle extends Model
     public function producto()
     {
         return $this->belongsTo(Producto::class, 'productos_id');
+    }
+
+    public function stock()
+    {
+        return $this->belongsTo(Stock::class, 'stocks_id');
     }
 }

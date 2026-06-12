@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Compra;
+use App\Models\PagoProveedor;
 use App\Models\Stock;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -17,7 +18,10 @@ class CompraController extends Controller
         $compras = Compra::with([
             'proveedor',
             'usuario.persona',
-            'detalles.producto'
+            'detalles.producto',
+            'detalles.stock.talla',
+            'detalles.stock.color',
+            'pagos.usuario.persona'
         ])
         ->orderBy('id', 'desc')
         ->get();
@@ -50,6 +54,16 @@ class CompraController extends Controller
                 'date'
             ],
 
+            'numero_documento' => ['nullable', 'string', 'max:50'],
+            'fecha_vencimiento' => ['nullable', 'date', 'after_or_equal:fecha'],
+            'pago_inicial' => ['nullable', 'numeric', 'min:0'],
+            'metodo_pago' => [
+                'nullable',
+                'in:efectivo,transferencia,yape,tarjeta,otro'
+            ],
+            'referencia_pago' => ['nullable', 'string', 'max:100'],
+            'observaciones' => ['nullable', 'string', 'max:1000'],
+
             'detalles' => [
                 'required',
                 'array',
@@ -59,6 +73,11 @@ class CompraController extends Controller
             'detalles.*.productos_id' => [
                 'required',
                 'exists:productos,id'
+            ],
+
+            'detalles.*.stocks_id' => [
+                'required',
+                'exists:stocks,id'
             ],
 
             'detalles.*.cantidad' => [
@@ -107,15 +126,59 @@ class CompraController extends Controller
             $total = 0;
 
             foreach ($request->detalles as $detalle) {
+                $stock = Stock::where('id', $detalle['stocks_id'])
+                    ->where('productos_id', $detalle['productos_id'])
+                    ->first();
+
+                if (!$stock) {
+                    DB::rollBack();
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'La variante seleccionada no pertenece al producto.',
+                    ], 422);
+                }
+
                 $total += $detalle['cantidad'] * $detalle['precio'];
+            }
+
+            $pagoInicial = (float) ($request->pago_inicial ?? 0);
+
+            if ($pagoInicial > $total) {
+                DB::rollBack();
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'El pago inicial no puede superar el total de la compra.',
+                ], 422);
             }
 
             $compra = Compra::create([
                 'proveedores_id' => $request->proveedores_id,
                 'usuarios_id' => $request->usuarios_id,
                 'fecha' => $request->fecha,
+                'numero_documento' => $request->numero_documento,
+                'fecha_vencimiento' => $request->fecha_vencimiento,
                 'total' => $total,
+                'monto_pagado' => $pagoInicial,
+                'estado_pago' => $pagoInicial >= $total
+                    ? 'pagado'
+                    : ($pagoInicial > 0 ? 'parcial' : 'pendiente'),
+                'observaciones' => $request->observaciones,
             ]);
+
+            if ($pagoInicial > 0) {
+                PagoProveedor::create([
+                    'proveedores_id' => $request->proveedores_id,
+                    'compras_id' => $compra->id,
+                    'usuarios_id' => $request->usuarios_id,
+                    'fecha' => $request->fecha,
+                    'monto' => $pagoInicial,
+                    'metodo' => $request->metodo_pago ?: 'efectivo',
+                    'referencia' => $request->referencia_pago,
+                    'observacion' => 'Pago inicial de la compra',
+                ]);
+            }
 
             foreach ($request->detalles as $detalle) {
 
@@ -123,30 +186,14 @@ class CompraController extends Controller
 
                 $compra->detalles()->create([
                     'productos_id' => $detalle['productos_id'],
+                    'stocks_id' => $detalle['stocks_id'],
                     'cantidad' => $detalle['cantidad'],
                     'precio' => $detalle['precio'],
                     'subtotal' => $subtotal,
                 ]);
 
-                /**
-                 * Actualizar stock
-                 */
-
-                $stock = Stock::where('productos_id', $detalle['productos_id'])
-                    ->first();
-
-                if ($stock) {
-
-                    $stock->increment('cantidad', $detalle['cantidad']);
-
-                } else {
-
-                    Stock::create([
-                        'productos_id' => $detalle['productos_id'],
-                        'cantidad' => $detalle['cantidad'],
-                        'stock_minimo' => 5,
-                    ]);
-                }
+                Stock::where('id', $detalle['stocks_id'])
+                    ->increment('cantidad', $detalle['cantidad']);
             }
 
             DB::commit();
@@ -157,7 +204,10 @@ class CompraController extends Controller
                 'data' => $compra->load([
                     'proveedor',
                     'usuario.persona',
-                    'detalles.producto'
+                    'detalles.producto',
+                    'detalles.stock.talla',
+                    'detalles.stock.color',
+                    'pagos'
                 ])
             ], 201);
 
@@ -181,7 +231,10 @@ class CompraController extends Controller
         $compra = Compra::with([
             'proveedor',
             'usuario.persona',
-            'detalles.producto'
+            'detalles.producto',
+            'detalles.stock.talla',
+            'detalles.stock.color',
+            'pagos.usuario.persona'
         ])->find($id);
 
         if (!$compra) {
@@ -203,7 +256,7 @@ class CompraController extends Controller
      */
     public function destroy($id)
     {
-        $compra = Compra::with('detalles')->find($id);
+        $compra = Compra::with(['detalles.stock', 'pagos'])->find($id);
 
         if (!$compra) {
             return response()->json([
@@ -215,27 +268,21 @@ class CompraController extends Controller
         DB::beginTransaction();
 
         try {
-
-            /**
-             * Restar stock
-             */
             foreach ($compra->detalles as $detalle) {
+                $stock = $detalle->stock;
 
-                $stock = Stock::where('productos_id', $detalle->productos_id)
-                    ->first();
+                if (!$stock || $stock->cantidad < $detalle->cantidad) {
+                    DB::rollBack();
 
-                if ($stock) {
-
-                    $nuevoStock = $stock->cantidad - $detalle->cantidad;
-
-                    if ($nuevoStock < 0) {
-                        $nuevoStock = 0;
-                    }
-
-                    $stock->update([
-                        'cantidad' => $nuevoStock
-                    ]);
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'No se puede anular la compra porque parte de ese stock ya fue vendido o no está disponible.',
+                    ], 409);
                 }
+            }
+
+            foreach ($compra->detalles as $detalle) {
+                $detalle->stock->decrement('cantidad', $detalle->cantidad);
             }
 
             $compra->delete();

@@ -14,7 +14,7 @@ class CategoriaController extends Controller
     public function index()
     {
         $categorias = Categoria::withCount('productos')
-            ->orderBy('id', 'desc')
+            ->orderBy('id', 'asc')
             ->get();
 
         return response()->json([

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Cliente;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class ClienteController extends Controller
@@ -11,10 +12,32 @@ class ClienteController extends Controller
     /**
      * Listar todos los clientes.
      */
-    public function index()
+    public function index(Request $request)
     {
-        $clientes = Cliente::with('persona')
+        $request->validate([
+            'buscar' => ['nullable', 'string', 'max:150'],
+        ]);
+
+        $clientes = Cliente::with([
+                'persona.usuario:id,personas_id,username,estado'
+            ])
             ->withCount('ventas')
+            ->withSum('ventas as total_gastado', 'total')
+            ->withMax('ventas as ultima_compra', 'fecha')
+            ->when($request->filled('buscar'), function ($query) use ($request) {
+                $texto = trim($request->buscar);
+
+                $query->whereHas('persona', function ($personaQuery) use ($texto) {
+                    $personaQuery->where(function ($subquery) use ($texto) {
+                        $subquery
+                            ->where('nombre', 'like', "%{$texto}%")
+                            ->orWhere('apellido', 'like', "%{$texto}%")
+                            ->orWhere('dni', 'like', "%{$texto}%")
+                            ->orWhere('telefono', 'like', "%{$texto}%")
+                            ->orWhere('email', 'like', "%{$texto}%");
+                    });
+                });
+            })
             ->orderBy('id', 'desc')
             ->get();
 
@@ -58,7 +81,21 @@ class ClienteController extends Controller
      */
     public function show($id)
     {
-        $cliente = Cliente::with(['persona', 'ventas.detalles.stock.producto'])
+        $cliente = Cliente::with([
+                'persona.usuario:id,personas_id,username,estado',
+                'ventas' => function ($query) {
+                    $query->with([
+                        'usuario.persona',
+                        'detalles.stock.producto',
+                        'detalles.stock.talla',
+                        'detalles.stock.color',
+                        'comprobante',
+                    ])->orderByDesc('fecha');
+                },
+            ])
+            ->withCount('ventas')
+            ->withSum('ventas as total_gastado', 'total')
+            ->withMax('ventas as ultima_compra', 'fecha')
             ->find($id);
 
         if (!$cliente) {
@@ -89,26 +126,72 @@ class ClienteController extends Controller
             ], 404);
         }
 
-        $request->validate([
-            'personas_id' => [
+        $persona = $cliente->persona;
+
+        $datos = $request->validate([
+            'nombre' => [
                 'required',
-                'exists:personas,id',
-                Rule::unique('clientes', 'personas_id')->ignore($cliente->id)
+                'string',
+                'max:100'
+            ],
+            'apellido' => [
+                'required',
+                'string',
+                'max:100'
+            ],
+            'dni' => [
+                'nullable',
+                'digits:8',
+                Rule::unique('personas', 'dni')->ignore($persona->id)
+            ],
+            'telefono' => [
+                'nullable',
+                'digits_between:6,15'
+            ],
+            'direccion' => [
+                'nullable',
+                'string',
+                'max:255'
+            ],
+            'email' => [
+                'nullable',
+                'email',
+                'max:150',
+                Rule::unique('personas', 'email')->ignore($persona->id)
             ],
         ], [
-            'personas_id.required' => 'La persona es obligatoria.',
-            'personas_id.exists' => 'La persona seleccionada no existe.',
-            'personas_id.unique' => 'Esta persona ya está registrada como cliente.',
+            'nombre.required' => 'El nombre es obligatorio.',
+            'apellido.required' => 'El apellido es obligatorio.',
+            'dni.digits' => 'El DNI debe tener 8 dígitos.',
+            'dni.unique' => 'El DNI ya está registrado.',
+            'telefono.digits_between' => 'El teléfono debe tener entre 6 y 15 dígitos.',
+            'email.email' => 'Ingresa un correo válido.',
+            'email.unique' => 'El correo ya está registrado.',
         ]);
 
-        $cliente->update([
-            'personas_id' => $request->personas_id,
-        ]);
+        DB::transaction(function () use ($persona, $datos) {
+            $persona->update([
+                'nombre' => trim($datos['nombre']),
+                'apellido' => trim($datos['apellido']),
+                'dni' => !empty($datos['dni']) ? $datos['dni'] : null,
+                'telefono' => !empty($datos['telefono'])
+                    ? $datos['telefono']
+                    : null,
+                'direccion' => !empty($datos['direccion'])
+                    ? trim($datos['direccion'])
+                    : null,
+                'email' => !empty($datos['email'])
+                    ? strtolower(trim($datos['email']))
+                    : null,
+            ]);
+        });
 
         return response()->json([
             'success' => true,
             'message' => 'Cliente actualizado correctamente',
-            'data' => $cliente->load('persona')
+            'data' => $cliente->fresh([
+                'persona.usuario:id,personas_id,username,estado'
+            ])
         ], 200);
     }
 

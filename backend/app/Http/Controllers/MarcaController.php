@@ -14,7 +14,7 @@ class MarcaController extends Controller
     public function index()
     {
         $marcas = Marca::withCount('productos')
-            ->orderBy('id', 'desc')
+            ->orderBy('id', 'asc')
             ->get();
 
         return response()->json([

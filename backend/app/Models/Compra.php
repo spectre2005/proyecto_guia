@@ -12,7 +12,12 @@ class Compra extends Model
         'proveedores_id',
         'usuarios_id',
         'fecha',
+        'numero_documento',
+        'fecha_vencimiento',
         'total',
+        'monto_pagado',
+        'estado_pago',
+        'observaciones',
     ];
 
     public function proveedor()
@@ -28,5 +33,10 @@ class Compra extends Model
     public function detalles()
     {
         return $this->hasMany(CompraDetalle::class, 'compras_id');
+    }
+
+    public function pagos()
+    {
+        return $this->hasMany(PagoProveedor::class, 'compras_id');
     }
 }

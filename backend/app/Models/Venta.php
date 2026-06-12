@@ -14,6 +14,8 @@ class Venta extends Model
         'fecha',
         'total',
         'metodo_pago',
+        'monto_recibido',
+        'vuelto',
         'estado',
     ];
 

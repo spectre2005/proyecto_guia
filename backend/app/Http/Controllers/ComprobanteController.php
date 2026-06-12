@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\Comprobante;
+use App\Models\Venta;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
 
 class ComprobanteController extends Controller
@@ -11,15 +13,24 @@ class ComprobanteController extends Controller
     /**
      * Listar todos los comprobantes.
      */
-    public function index()
+    public function index(Request $request)
     {
+        $usuario = $request->user()->loadMissing('role');
         $comprobantes = Comprobante::with([
             'venta.cliente.persona',
             'venta.usuario.persona',
             'venta.detalles.stock.producto'
         ])
-        ->orderBy('id', 'desc')
-        ->get();
+            ->when(
+                $usuario->role?->nombre === 'Vendedor',
+                fn ($query) => $query->whereHas(
+                    'venta',
+                    fn ($ventaQuery) => $ventaQuery
+                        ->where('usuarios_id', $usuario->id)
+                )
+            )
+            ->orderBy('id', 'desc')
+            ->get();
 
         return response()->json([
             'success' => true,
@@ -70,6 +81,18 @@ class ComprobanteController extends Controller
             'fecha.date' => 'La fecha no es válida.',
         ]);
 
+        $venta = Venta::findOrFail($request->ventas_id);
+
+        if (
+            $request->user()->role?->nombre === 'Vendedor'
+            && $venta->usuarios_id !== $request->user()->id
+        ) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No tienes permiso para generar este comprobante.'
+            ], 403);
+        }
+
         $numero = $request->numero;
 
         if (!$numero) {
@@ -87,7 +110,8 @@ class ComprobanteController extends Controller
             'ventas_id' => $request->ventas_id,
             'tipo' => strtolower(trim($request->tipo)),
             'numero' => $numero,
-            'fecha' => $request->fecha,
+            'fecha' => Carbon::parse($request->fecha)
+                ->format('Y-m-d H:i:s'),
         ]);
 
         return response()->json([
@@ -100,7 +124,7 @@ class ComprobanteController extends Controller
     /**
      * Mostrar un comprobante específico.
      */
-    public function show($id)
+    public function show(Request $request, $id)
     {
         $comprobante = Comprobante::with([
             'venta.cliente.persona',
@@ -115,6 +139,16 @@ class ComprobanteController extends Controller
                 'success' => false,
                 'message' => 'Comprobante no encontrado'
             ], 404);
+        }
+
+        if (
+            $request->user()->role?->nombre === 'Vendedor'
+            && $comprobante->venta?->usuarios_id !== $request->user()->id
+        ) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No tienes permiso para ver este comprobante.'
+            ], 403);
         }
 
         return response()->json([
@@ -201,7 +235,7 @@ class ComprobanteController extends Controller
     /**
      * Buscar comprobante por número.
      */
-    public function buscarPorNumero($numero)
+    public function buscarPorNumero(Request $request, $numero)
     {
         $comprobante = Comprobante::with([
             'venta.cliente.persona',
@@ -216,6 +250,16 @@ class ComprobanteController extends Controller
                 'success' => false,
                 'message' => 'No se encontró ningún comprobante con ese número'
             ], 404);
+        }
+
+        if (
+            $request->user()->role?->nombre === 'Vendedor'
+            && $comprobante->venta?->usuarios_id !== $request->user()->id
+        ) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No tienes permiso para ver este comprobante.'
+            ], 403);
         }
 
         return response()->json([

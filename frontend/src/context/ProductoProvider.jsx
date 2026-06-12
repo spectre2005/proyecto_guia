@@ -1,215 +1,165 @@
-// src/context/ProductoProvider.jsx
+import { createContext, useCallback, useState } from "react";
+import clienteAxios from "../config/axios";
 
-import { createContext, useState, useEffect } from 'react'
-import clienteAxios from '../config/axios'
-
-// PARTE 1: Crear el contexto (el canal de datos)
-const ProductoContext = createContext()
+const ProductoContext = createContext();
 
 const ProductoProvider = ({ children }) => {
 
-    // PARTE 2: Estado del módulo
-    const [productos, setProductos] = useState([])
-    const [cargando, setCargando] = useState(false)
-    const [alerta, setAlerta] = useState({ msg: '', error: false })
-    const [modoEdicion, setModoEdicion] = useState(false)
-    const [editandoId, setEditandoId] = useState(null)
+    const [productos, setProductos] = useState([]);
+    const [loading, setLoading] = useState(true);
 
-    // Estado del formulario
-    const [form, setForm] = useState({
-        nombre: '',
-        precio: '',
-        imagen: ''
-    })
-
-    // Manejar cambios en los inputs
-    const handleInputChange = (e) => {
-        setForm({
-            ...form,
-            [e.target.name]: e.target.value
-        })
-    }
-
-    // Limpiar formulario
-    const resetForm = () => {
-        setForm({
-            nombre: '',
-            precio: '',
-            imagen: ''
-        })
-
-        setModoEdicion(false)
-        setEditandoId(null)
-    }
-
-    // Mostrar alertas
-    const mostrarAlerta = (msg, error = false) => {
-        setAlerta({ msg, error })
-
-        setTimeout(() => {
-            setAlerta({ msg: '', error: false })
-        }, 3000)
-    }
-
-    // PARTE 3a: GET — Obtener productos
-    const fetchProductos = async () => {
-
-        setCargando(true)
+    // OBTENER PRODUCTOS
+    const obtenerProductos = useCallback(async () => {
+        setLoading(true);
 
         try {
 
-            const { data } = await clienteAxios.get('/api/productos')
+            const { data } = await clienteAxios.get("/productos");
 
-            setProductos(data)
+            setProductos(
+                Array.isArray(data)
+                    ? data
+                    : data.data || []
+            );
 
         } catch (error) {
 
-            mostrarAlerta('Error al cargar los productos', true)
+            console.log(error);
+            setProductos([]);
 
         } finally {
-
-            setCargando(false)
-
+            setLoading(false);
         }
-    }
+    }, []);
 
-    // PARTE 3b: POST — Crear producto
-    const crearProducto = async (e) => {
-
-        e.preventDefault()
-
-        setCargando(true)
+    // REGISTRAR PRODUCTO
+    const registrarProducto = async (producto) => {
 
         try {
 
-            const { data } = await clienteAxios.post('/api/productos', form)
+            const { data } = await clienteAxios.post(
+                "/productos",
+                producto,
+                {
+                    headers: {
+                        "Content-Type": "multipart/form-data",
+                    },
+                }
+            );
 
-            setProductos(prev => [...prev, data])
+            setProductos((prev) => [
+                ...prev,
+                data.data || data
+            ]);
 
-            mostrarAlerta('Producto creado correctamente')
-
-            resetForm()
+            return {
+                ok: true,
+                mensaje: "Producto registrado correctamente",
+            };
 
         } catch (error) {
 
-            const msg =
-                error.response?.data?.message || 'Error al crear'
+            console.log(error);
 
-            mostrarAlerta(msg, true)
-
-        } finally {
-
-            setCargando(false)
-
+            return {
+                ok: false,
+                mensaje:
+                    error.response?.data?.message ||
+                    "Error al registrar producto",
+            };
         }
-    }
+    };
 
-    // PARTE 3c: Cargar datos para editar
-    const editarProducto = (producto) => {
-
-        setForm({
-            nombre: producto.nombre,
-            precio: producto.precio,
-            imagen: producto.imagen
-        })
-
-        setModoEdicion(true)
-
-        setEditandoId(producto.id)
-    }
-
-    // PARTE 3d: PUT — Actualizar producto
-    const actualizarProducto = async (e) => {
-
-        e.preventDefault()
-
-        setCargando(true)
+    // ACTUALIZAR PRODUCTO
+    const actualizarProducto = async (id, producto) => {
 
         try {
 
-            const { data } = await clienteAxios.put(
-                `/api/productos/${editandoId}`,
-                form
-            )
+            const { data } = await clienteAxios.post(
+                `/productos/${id}?_method=PUT`,
+                producto,
+                {
+                    headers: {
+                        "Content-Type": "multipart/form-data",
+                    },
+                }
+            );
 
-            setProductos(productos.map(p =>
-                    p.id === editandoId ? data : p
-                )
-            )
+            const productosActualizados = productos.map((item) =>
+                item.id === id
+                    ? (data.data || data)
+                    : item
+            );
 
-            mostrarAlerta('Producto actualizado correctamente')
+            setProductos(productosActualizados);
 
-            resetForm()
+            return {
+                ok: true,
+                mensaje: "Producto actualizado correctamente",
+            };
 
         } catch (error) {
 
-            mostrarAlerta('Error al actualizar', true)
+            console.log(error);
 
-        } finally {
-
-            setCargando(false)
-
+            return {
+                ok: false,
+                mensaje:
+                    error.response?.data?.message ||
+                    "Error al actualizar producto",
+            };
         }
-    }
+    };
 
-    // PARTE 3e: DELETE — Eliminar producto
+    // ELIMINAR PRODUCTO
     const eliminarProducto = async (id) => {
 
-        if (!window.confirm('¿Confirma eliminar este producto?')) return
-
-        setCargando(true)
-
         try {
 
-            await clienteAxios.delete(`/api/productos/${id}`)
+            await clienteAxios.delete(`/productos/${id}`);
 
-            setProductos(prev =>
-                prev.filter(p => p.id !== id)
-            )
+            const productosFiltrados = productos.filter(
+                (producto) => producto.id !== id
+            );
 
-            mostrarAlerta('Producto eliminado')
+            setProductos(productosFiltrados);
+
+            return {
+                ok: true,
+                mensaje: "Producto eliminado correctamente",
+            };
 
         } catch (error) {
 
-            mostrarAlerta('Error al eliminar', true)
+            console.log(error);
 
-        } finally {
-
-            setCargando(false)
-
+            return {
+                ok: false,
+                mensaje:
+                    error.response?.data?.message ||
+                    "Error al eliminar producto",
+            };
         }
-    }
-
-    // PARTE 4: Cargar productos al iniciar
-    useEffect(() => {
-
-        fetchProductos()
-
-    }, [])
+    };
 
     return (
-
-        // PARTE 5: Compartir datos y funciones
         <ProductoContext.Provider
             value={{
                 productos,
-                form,
-                alerta,
-                cargando,
-                modoEdicion,
-                handleInputChange,
-                crearProducto,
+                loading,
+                obtenerProductos,
+                registrarProducto,
                 actualizarProducto,
-                editarProducto,
                 eliminarProducto,
-                resetForm,
             }}
         >
             {children}
         </ProductoContext.Provider>
-    )
-}
+    );
+};
 
-export { ProductoProvider }
+export {
+    ProductoProvider
+};
 
-export default ProductoContext
+export default ProductoContext;

@@ -12,7 +12,10 @@ class AuditoriaController extends Controller
      */
     public function index()
     {
-        $auditorias = Auditoria::with('usuario.persona')
+        $auditorias = Auditoria::with([
+            'usuario.persona',
+            'usuario.role',
+        ])
             ->orderBy('id', 'desc')
             ->get();
 
@@ -65,7 +68,10 @@ class AuditoriaController extends Controller
      */
     public function show($id)
     {
-        $auditoria = Auditoria::with('usuario.persona')->find($id);
+        $auditoria = Auditoria::with([
+            'usuario.persona',
+            'usuario.role',
+        ])->find($id);
 
         if (!$auditoria) {
             return response()->json([
@@ -145,7 +151,10 @@ class AuditoriaController extends Controller
      */
     public function porUsuario($usuarios_id)
     {
-        $auditorias = Auditoria::with('usuario.persona')
+        $auditorias = Auditoria::with([
+            'usuario.persona',
+            'usuario.role',
+        ])
             ->where('usuarios_id', $usuarios_id)
             ->orderBy('id', 'desc')
             ->get();
@@ -162,7 +171,10 @@ class AuditoriaController extends Controller
      */
     public function porTabla($tabla)
     {
-        $auditorias = Auditoria::with('usuario.persona')
+        $auditorias = Auditoria::with([
+            'usuario.persona',
+            'usuario.role',
+        ])
             ->where('tabla_afectada', $tabla)
             ->orderBy('id', 'desc')
             ->get();

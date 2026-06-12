@@ -14,7 +14,7 @@ class TallaController extends Controller
     public function index()
     {
         $tallas = Talla::withCount('stocks')
-            ->orderBy('id', 'desc')
+            ->orderBy('id', 'asc')
             ->get();
 
         return response()->json([

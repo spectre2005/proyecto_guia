@@ -16,4 +16,4 @@ class Talla extends Model
     {
         return $this->hasMany(Stock::class, 'tallas_id');
     }
-}  use HasFactory;
+}

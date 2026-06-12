@@ -15,7 +15,7 @@ class UsuarioController extends Controller
     public function index()
     {
         $usuarios = Usuario::with(['persona', 'role'])
-            ->orderBy('id', 'desc')
+            ->orderBy('id', 'asc')
             ->get();
 
         return response()->json([
@@ -209,7 +209,39 @@ class UsuarioController extends Controller
             'data' => $usuario->load(['persona', 'role'])
         ], 200);
     }
+    public function cambiarRolEstado(Request $request, $id)
+    {
+        $usuario = Usuario::find($id);
 
+        if (!$usuario) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Usuario no encontrado'
+            ], 404);
+        }
+
+        $request->validate([
+            'roles_id' => [
+                'required',
+                'exists:roles,id'
+            ],
+            'estado' => [
+                'required',
+                'boolean'
+            ],
+        ]);
+
+        $usuario->update([
+            'roles_id' => $request->roles_id,
+            'estado' => $request->estado,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Rol y estado actualizados correctamente',
+            'data' => $usuario->load(['persona', 'role'])
+        ], 200);
+    }
     /**
      * Eliminar usuario.
      */

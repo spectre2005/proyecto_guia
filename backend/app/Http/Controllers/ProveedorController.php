@@ -2,8 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Compra;
+use App\Models\PagoProveedor;
 use App\Models\Proveedor;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class ProveedorController extends Controller
@@ -11,11 +14,47 @@ class ProveedorController extends Controller
     /**
      * Listar todos los proveedores.
      */
-    public function index()
+    public function index(Request $request)
     {
-        $proveedores = Proveedor::withCount('compras')
+        $request->validate([
+            'buscar' => ['nullable', 'string', 'max:150'],
+        ]);
+
+        $proveedores = Proveedor::withCount([
+                'compras',
+                'compras as compras_vencidas' => function ($query) {
+                    $query
+                        ->whereColumn('monto_pagado', '<', 'total')
+                        ->whereDate('fecha_vencimiento', '<', today());
+                },
+            ])
+            ->withSum('compras as total_comprado', 'total')
+            ->withSum('compras as total_pagado', 'monto_pagado')
+            ->withMax('compras as ultima_compra', 'fecha')
+            ->when($request->filled('buscar'), function ($query) use ($request) {
+                $texto = trim($request->buscar);
+                $query->where(function ($subquery) use ($texto) {
+                    $subquery
+                        ->where('nombre_empresa', 'like', "%{$texto}%")
+                        ->orWhere('contacto', 'like', "%{$texto}%")
+                        ->orWhere('ruc', 'like', "%{$texto}%")
+                        ->orWhere('telefono', 'like', "%{$texto}%")
+                        ->orWhere('email', 'like', "%{$texto}%");
+                });
+            })
             ->orderBy('id', 'desc')
             ->get();
+
+        $proveedores->each(function ($proveedor) {
+            $proveedor->setAttribute(
+                'saldo_pendiente',
+                max(
+                    0,
+                    (float) $proveedor->total_comprado -
+                        (float) $proveedor->total_pagado
+                )
+            );
+        });
 
         return response()->json([
             'success' => true,
@@ -54,6 +93,12 @@ class ProveedorController extends Controller
                 'max:255'
             ],
 
+            'contacto' => ['nullable', 'string', 'max:150'],
+            'email' => ['nullable', 'email', 'max:150'],
+            'dias_credito' => ['nullable', 'integer', 'min:0', 'max:365'],
+            'estado' => ['nullable', 'boolean'],
+            'notas' => ['nullable', 'string', 'max:1000'],
+
         ], [
 
             'nombre_empresa.required' => 'El nombre de la empresa es obligatorio.',
@@ -68,15 +113,22 @@ class ProveedorController extends Controller
 
             'direccion.string' => 'La dirección debe ser texto.',
             'direccion.max' => 'La dirección no debe superar los 255 caracteres.',
+            'email.email' => 'Ingresa un correo válido.',
+            'dias_credito.max' => 'Los días de crédito no pueden superar 365.',
         ]);
 
         $proveedor = Proveedor::create([
             'nombre_empresa' => trim($request->nombre_empresa),
+            'contacto' => $request->contacto ? trim($request->contacto) : null,
             'ruc' => $request->ruc,
             'telefono' => $request->telefono,
+            'email' => $request->email ? strtolower(trim($request->email)) : null,
             'direccion' => $request->direccion
                 ? trim($request->direccion)
                 : null,
+            'dias_credito' => $request->dias_credito ?? 0,
+            'estado' => $request->estado ?? true,
+            'notas' => $request->notas ? trim($request->notas) : null,
         ]);
 
         return response()->json([
@@ -92,8 +144,25 @@ class ProveedorController extends Controller
     public function show($id)
     {
         $proveedor = Proveedor::with([
-            'compras.detalles.producto'
-        ])->find($id);
+                'compras' => function ($query) {
+                    $query->with([
+                        'usuario.persona',
+                        'detalles.producto',
+                        'detalles.stock.talla',
+                        'detalles.stock.color',
+                        'pagos.usuario.persona',
+                    ])->orderByDesc('fecha');
+                },
+                'pagos' => function ($query) {
+                    $query->with(['compra', 'usuario.persona'])
+                        ->orderByDesc('fecha');
+                },
+            ])
+            ->withCount('compras')
+            ->withSum('compras as total_comprado', 'total')
+            ->withSum('compras as total_pagado', 'monto_pagado')
+            ->withMax('compras as ultima_compra', 'fecha')
+            ->find($id);
 
         if (!$proveedor) {
             return response()->json([
@@ -101,6 +170,15 @@ class ProveedorController extends Controller
                 'message' => 'Proveedor no encontrado'
             ], 404);
         }
+
+        $proveedor->setAttribute(
+            'saldo_pendiente',
+            max(
+                0,
+                (float) $proveedor->total_comprado -
+                    (float) $proveedor->total_pagado
+            )
+        );
 
         return response()->json([
             'success' => true,
@@ -150,6 +228,12 @@ class ProveedorController extends Controller
                 'max:255'
             ],
 
+            'contacto' => ['nullable', 'string', 'max:150'],
+            'email' => ['nullable', 'email', 'max:150'],
+            'dias_credito' => ['nullable', 'integer', 'min:0', 'max:365'],
+            'estado' => ['nullable', 'boolean'],
+            'notas' => ['nullable', 'string', 'max:1000'],
+
         ], [
 
             'nombre_empresa.required' => 'El nombre de la empresa es obligatorio.',
@@ -164,15 +248,22 @@ class ProveedorController extends Controller
 
             'direccion.string' => 'La dirección debe ser texto.',
             'direccion.max' => 'La dirección no debe superar los 255 caracteres.',
+            'email.email' => 'Ingresa un correo válido.',
+            'dias_credito.max' => 'Los días de crédito no pueden superar 365.',
         ]);
 
         $proveedor->update([
             'nombre_empresa' => trim($request->nombre_empresa),
+            'contacto' => $request->contacto ? trim($request->contacto) : null,
             'ruc' => $request->ruc,
             'telefono' => $request->telefono,
+            'email' => $request->email ? strtolower(trim($request->email)) : null,
             'direccion' => $request->direccion
                 ? trim($request->direccion)
                 : null,
+            'dias_credito' => $request->dias_credito ?? 0,
+            'estado' => $request->estado ?? true,
+            'notas' => $request->notas ? trim($request->notas) : null,
         ]);
 
         return response()->json([
@@ -180,6 +271,87 @@ class ProveedorController extends Controller
             'message' => 'Proveedor actualizado correctamente',
             'data' => $proveedor
         ], 200);
+    }
+
+    public function registrarPago(Request $request, $id)
+    {
+        $datos = $request->validate([
+            'compras_id' => ['required', 'integer', 'exists:compras,id'],
+            'usuarios_id' => ['nullable', 'integer', 'exists:usuarios,id'],
+            'fecha' => ['required', 'date'],
+            'monto' => ['required', 'numeric', 'min:0.01'],
+            'metodo' => [
+                'required',
+                Rule::in(['efectivo', 'transferencia', 'yape', 'tarjeta', 'otro']),
+            ],
+            'referencia' => ['nullable', 'string', 'max:100'],
+            'observacion' => ['nullable', 'string', 'max:500'],
+        ], [
+            'compras_id.required' => 'Selecciona la compra que deseas pagar.',
+            'monto.required' => 'Ingresa el monto del pago.',
+            'monto.min' => 'El pago debe ser mayor a cero.',
+            'metodo.required' => 'Selecciona el método de pago.',
+        ]);
+
+        $proveedor = Proveedor::find($id);
+
+        if (!$proveedor) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Proveedor no encontrado'
+            ], 404);
+        }
+
+        $pago = DB::transaction(function () use ($datos, $proveedor) {
+            $compra = Compra::where('id', $datos['compras_id'])
+                ->where('proveedores_id', $proveedor->id)
+                ->lockForUpdate()
+                ->first();
+
+            if (!$compra) {
+                abort(422, 'La compra no pertenece a este proveedor.');
+            }
+
+            $saldo = max(
+                0,
+                (float) $compra->total - (float) $compra->monto_pagado
+            );
+
+            if ((float) $datos['monto'] > $saldo) {
+                abort(422, 'El pago no puede superar el saldo pendiente.');
+            }
+
+            $pago = PagoProveedor::create([
+                'proveedores_id' => $proveedor->id,
+                'compras_id' => $compra->id,
+                'usuarios_id' => $datos['usuarios_id'] ?? null,
+                'fecha' => $datos['fecha'],
+                'monto' => $datos['monto'],
+                'metodo' => $datos['metodo'],
+                'referencia' => $datos['referencia'] ?? null,
+                'observacion' => $datos['observacion'] ?? null,
+            ]);
+
+            $nuevoPagado = min(
+                (float) $compra->total,
+                (float) $compra->monto_pagado + (float) $datos['monto']
+            );
+
+            $compra->update([
+                'monto_pagado' => $nuevoPagado,
+                'estado_pago' => $nuevoPagado >= (float) $compra->total
+                    ? 'pagado'
+                    : 'parcial',
+            ]);
+
+            return $pago;
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Pago registrado correctamente',
+            'data' => $pago->load(['compra', 'usuario.persona']),
+        ], 201);
     }
 
     /**

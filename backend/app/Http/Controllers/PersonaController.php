@@ -8,12 +8,9 @@ use Illuminate\Validation\Rule;
 
 class PersonaController extends Controller
 {
-    /**
-     * Listar todas las personas.
-     */
     public function index()
     {
-        $personas = Persona::orderBy('id', 'desc')->get();
+        $personas = Persona::orderBy('id', 'asc')->get();
 
         return response()->json([
             'success' => true,
@@ -22,71 +19,26 @@ class PersonaController extends Controller
         ], 200);
     }
 
-    /**
-     * Registrar una nueva persona.
-     */
     public function store(Request $request)
     {
         $request->validate([
-            'nombre' => [
-                'required',
-                'string',
-                'max:100'
-            ],
-            'apellido' => [
-                'required',
-                'string',
-                'max:100'
-            ],
-            'dni' => [
-                'nullable',
-                'digits:8',
-                'unique:personas,dni'
-            ],
-            'telefono' => [
-                'nullable',
-                'digits_between:6,15'
-            ],
-            'direccion' => [
-                'nullable',
-                'string',
-                'max:255'
-            ],
-            'email' => [
-                'nullable',
-                'email',
-                'max:150',
-                'unique:personas,email'
-            ],
-        ], [
-            'nombre.required' => 'El nombre es obligatorio.',
-            'nombre.string' => 'El nombre debe ser texto.',
-            'nombre.max' => 'El nombre no debe superar los 100 caracteres.',
+            'nombre' => 'required|string|max:100',
+            'apellido' => 'required|string|max:100',
+            'email' => 'required|email|max:150|unique:personas,email',
 
-            'apellido.required' => 'El apellido es obligatorio.',
-            'apellido.string' => 'El apellido debe ser texto.',
-            'apellido.max' => 'El apellido no debe superar los 100 caracteres.',
-
-            'dni.digits' => 'El DNI debe tener exactamente 8 dígitos.',
-            'dni.unique' => 'Este DNI ya se encuentra registrado.',
-
-            'telefono.digits_between' => 'El teléfono debe tener entre 6 y 15 dígitos.',
-
-            'direccion.string' => 'La dirección debe ser texto.',
-            'direccion.max' => 'La dirección no debe superar los 255 caracteres.',
-
-            'email.email' => 'Debe ingresar un correo electrónico válido.',
-            'email.max' => 'El correo no debe superar los 150 caracteres.',
-            'email.unique' => 'Este correo ya se encuentra registrado.',
+            'dni' => 'nullable|digits:8|unique:personas,dni',
+            'telefono' => 'nullable|digits_between:6,15',
+            'direccion' => 'nullable|string|max:255',
         ]);
 
         $persona = Persona::create([
             'nombre' => trim($request->nombre),
             'apellido' => trim($request->apellido),
+            'email' => strtolower(trim($request->email)),
+
             'dni' => $request->dni,
             'telefono' => $request->telefono,
             'direccion' => $request->direccion ? trim($request->direccion) : null,
-            'email' => $request->email ? strtolower(trim($request->email)) : null,
         ]);
 
         return response()->json([
@@ -96,9 +48,6 @@ class PersonaController extends Controller
         ], 201);
     }
 
-    /**
-     * Mostrar una persona específica.
-     */
     public function show($id)
     {
         $persona = Persona::with(['usuario', 'cliente'])->find($id);
@@ -117,9 +66,6 @@ class PersonaController extends Controller
         ], 200);
     }
 
-    /**
-     * Actualizar una persona.
-     */
     public function update(Request $request, $id)
     {
         $persona = Persona::find($id);
@@ -132,65 +78,32 @@ class PersonaController extends Controller
         }
 
         $request->validate([
-            'nombre' => [
+            'nombre' => 'required|string|max:100',
+            'apellido' => 'required|string|max:100',
+            'email' => [
                 'required',
-                'string',
-                'max:100'
+                'email',
+                'max:150',
+                Rule::unique('personas', 'email')->ignore($persona->id)
             ],
-            'apellido' => [
-                'required',
-                'string',
-                'max:100'
-            ],
+
             'dni' => [
                 'nullable',
                 'digits:8',
                 Rule::unique('personas', 'dni')->ignore($persona->id)
             ],
-            'telefono' => [
-                'nullable',
-                'digits_between:6,15'
-            ],
-            'direccion' => [
-                'nullable',
-                'string',
-                'max:255'
-            ],
-            'email' => [
-                'nullable',
-                'email',
-                'max:150',
-                Rule::unique('personas', 'email')->ignore($persona->id)
-            ],
-        ], [
-            'nombre.required' => 'El nombre es obligatorio.',
-            'nombre.string' => 'El nombre debe ser texto.',
-            'nombre.max' => 'El nombre no debe superar los 100 caracteres.',
-
-            'apellido.required' => 'El apellido es obligatorio.',
-            'apellido.string' => 'El apellido debe ser texto.',
-            'apellido.max' => 'El apellido no debe superar los 100 caracteres.',
-
-            'dni.digits' => 'El DNI debe tener exactamente 8 dígitos.',
-            'dni.unique' => 'Este DNI ya se encuentra registrado.',
-
-            'telefono.digits_between' => 'El teléfono debe tener entre 6 y 15 dígitos.',
-
-            'direccion.string' => 'La dirección debe ser texto.',
-            'direccion.max' => 'La dirección no debe superar los 255 caracteres.',
-
-            'email.email' => 'Debe ingresar un correo electrónico válido.',
-            'email.max' => 'El correo no debe superar los 150 caracteres.',
-            'email.unique' => 'Este correo ya se encuentra registrado.',
+            'telefono' => 'nullable|digits_between:6,15',
+            'direccion' => 'nullable|string|max:255',
         ]);
 
         $persona->update([
             'nombre' => trim($request->nombre),
             'apellido' => trim($request->apellido),
+            'email' => strtolower(trim($request->email)),
+
             'dni' => $request->dni,
             'telefono' => $request->telefono,
             'direccion' => $request->direccion ? trim($request->direccion) : null,
-            'email' => $request->email ? strtolower(trim($request->email)) : null,
         ]);
 
         return response()->json([
@@ -200,9 +113,6 @@ class PersonaController extends Controller
         ], 200);
     }
 
-    /**
-     * Eliminar una persona.
-     */
     public function destroy($id)
     {
         $persona = Persona::with(['usuario', 'cliente'])->find($id);

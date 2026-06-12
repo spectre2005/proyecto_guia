@@ -12,7 +12,14 @@ class Auditoria extends Model
         'usuarios_id',
         'accion',
         'tabla_afectada',
+        'registro_id',
+        'descripcion',
+        'ip',
         'fecha',
+    ];
+
+    protected $casts = [
+        'fecha' => 'datetime',
     ];
 
     public function usuario()
